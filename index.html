@@ -23,11 +23,13 @@
             @apply w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer;
         }
         input[type="range"]::-webkit-slider-thumb {
-            @apply w-4 h-4 bg-blue-500 rounded-full;
+            /* つまみのサイズを w-6 h-6 に拡大し、タッチしやすくする */
+            @apply w-6 h-6 bg-blue-500 rounded-full; 
             -webkit-appearance: none; /* デフォルトのスタイルを無効化 */
         }
         input[type="range"]::-moz-range-thumb {
-            @apply w-4 h-4 bg-blue-500 rounded-full;
+            /* つまみのサイズを w-6 h-6 に拡大し、タッチしやすくする */
+            @apply w-6 h-6 bg-blue-500 rounded-full;
         }
         /* 数値入力フィールドのスタイル */
         input[type="number"] {
@@ -51,7 +53,8 @@
             <canvas id="angleCanvas" width="800" height="400" class="flex-grow"></canvas>
 
             <!-- 角度の表示エリア -->
-            <div class="p-4 bg-blue-100 rounded-lg text-center shadow-inner">
+            <!-- mt-6 を追加して、上方向にマージンを設定 -->
+            <div class="p-4 bg-blue-100 rounded-lg text-center shadow-inner mt-6">
                 <p class="text-lg font-semibold text-blue-800">現在の角度:</p>
                 <p id="angleDisplay" class="text-5xl font-extrabold text-blue-700 mt-2">0.00°</p>
             </div>
@@ -59,7 +62,7 @@
 
         <!-- スライダー操作UIエリア - 中画面以上で幅を固定し、縦方向に配置 -->
         <div class="w-full md:w-96 p-6 bg-gray-50 rounded-lg shadow-md flex-shrink-0">
-            <h2 class="text-2xl font-semibold text-gray-700 mb-6 text-center">パラメータ調整</h2>
+            <h2 class="2xl font-semibold text-gray-700 mb-6 text-center">パラメータ調整</h2>
 
             <div class="grid grid-cols-1 gap-6"> <!-- スライダーを縦に並べるため、グリッド列を1に固定 -->
                 <!-- 左樹木の高さ -->
@@ -119,34 +122,22 @@
             const lineDistanceNumber = document.getElementById('lineDistanceNumber');
             const basePointXNumber = document.getElementById('basePointXNumber');
 
-            // スライダーの横に表示される値の要素
+            // スライダーの横に表示される値の要素 (現在は数値入力フィールドがあるため、使用されていませんが念のため残しています)
             const leftLineLengthValue = document.querySelector('#leftLineLength + span');
             const rightLineLengthValue = document.querySelector('#rightLineLength + span');
             const lineDistanceValue = document.querySelector('#lineDistance + span');
             const basePointXValue = document.querySelector('#basePointX + span');
 
 
-            // --- 画像の読み込みと設定 ---
-            const basePointImage = new Image();
-            basePointImage.src = 'https://placehold.co/60x30/4A5568/FFFFFF?text=Robot';
-            let basePointImageLoaded = false;
-            let basePointImageDrawWidth = 60;
-            let basePointImageDrawHeight = 0;
+            // --- 基点の表示設定 ---
+            const BASE_POINT_RADIUS = 8; // 基点の円の半径
+            const BASE_POINT_COLOR = '#FFA500'; // オレンジ色に設定
 
-            basePointImage.onload = () => {
-                basePointImageLoaded = true;
-                basePointImageDrawHeight = (basePointImageDrawWidth / basePointImage.naturalWidth) * basePointImage.naturalHeight;
-                draw();
-            };
-            basePointImage.onerror = () => {
-                basePointImageLoaded = false;
-                draw();
-            };
 
             // --- メートル値をピクセル値にマッピングするための設定 ---
             const LINE_LENGTH_PX_MIN = 80;  // 3mに対応
             const LINE_DISTANCE_PX_MIN = 70; // 4mに対応
-            const BASE_POINT_HEIGHT_PX_OFFSET = 30; // 30cmを視覚的に表現
+            const BASE_POINT_HEIGHT_PX_OFFSET = 30; // 基点の地面からの高さオフセット（ピクセル）
 
 
             // スライダー設定から取得したメートル範囲
@@ -157,13 +148,20 @@
             const LINE_DISTANCE_M_MIN = parseFloat(lineDistanceSlider.min);
             const LINE_DISTANCE_M_MAX = parseFloat(lineDistanceSlider.max); 
 
-            // 各要素のキャンバス内でのマージンや位置の割合
+            // 各要素のキャンバス内でのマージンや位置の割合 (キャンバス高さ/幅に対する比率)
             const TOP_CANVAS_MARGIN_RATIO = 0.1; 
             const BOTTOM_CANVAS_PADDING_RATIO = 0.15; 
             const LEFT_LINE_FIXED_X_RATIO = 0.15; 
             const RIGHT_CANVAS_MARGIN_RATIO = 0.05; 
-            const FONT_SIZE_CANVAS_TITLE = 0.12; 
-            const FONT_SIZE_CANVAS_VALUES = 0.04; 
+            const FONT_SIZE_CANVAS_TITLE_RATIO = 0.12; // キャンバス内角度表示のフォントサイズ
+            const FONT_SIZE_CANVAS_VALUES_RATIO = 0.04; // キャンバス内数値（高さ、距離）のフォントサイズ
+
+            // 新しく追加する比率
+            const DISTANCE_TEXT_OFFSET_FROM_FLOOR_RATIO = 0.1; // 地面からの距離テキストのオフセット
+            const SEGMENT_TEXT_OFFSET_FROM_GUIDE_RATIO = 0.04; // 分割された距離テキストのガイド線からのオフセット
+            const FOLIAGE_RADIUS_RATIO = 0.06; // 樹木の葉の半径のキャンバス高さに対する比率 (約25px for 400px height)
+            const TRUNK_WIDTH_RATIO = 0.0375; // 樹木の幹の太さのキャンバス高さに対する比率 (約15px for 400px height)
+            const HORIZONTAL_GUIDE_OFFSET_FROM_FLOOR_RATIO = 0.05; // 水平ガイドラインの地面からのオフセット
 
 
             let config = {
@@ -253,7 +251,7 @@
                 ctx.stroke();
 
                 ctx.strokeStyle = '#8B4513';
-                ctx.lineWidth = 15;
+                ctx.lineWidth = canvas.height * TRUNK_WIDTH_RATIO; // 幹の太さを動的に
                 ctx.lineCap = 'butt';
 
                 ctx.beginPath();
@@ -267,7 +265,7 @@
                 ctx.stroke();
 
                 ctx.fillStyle = '#10B981';
-                const foliageRadius = 25;
+                const foliageRadius = canvas.height * FOLIAGE_RADIUS_RATIO; // 葉の半径を動的に
                 ctx.beginPath();
                 ctx.arc(config.leftLine.x, config.leftLine.y1, foliageRadius, 0, Math.PI * 2);
                 ctx.fill();
@@ -283,18 +281,12 @@
                 ctx.arc(config.rightLine.x, config.rightLine.y1, 8, 0, Math.PI * 2);
                 ctx.fill();
 
-                if (basePointImageLoaded) {
-                    ctx.drawImage(basePointImage,
-                                  config.basePoint.x - basePointImageDrawWidth / 2,
-                                  config.basePoint.y,
-                                  basePointImageDrawWidth,
-                                  basePointImageDrawHeight);
-                } else {
-                    ctx.fillStyle = '#EF4444';
-                    ctx.beginPath();
-                    ctx.arc(config.basePoint.x, config.basePoint.y, 8, 0, Math.PI * 2);
-                    ctx.fill();
-                }
+                // 基点 (オレンジ色の円) を描画
+                ctx.fillStyle = BASE_POINT_COLOR; // オレンジ色を使用
+                ctx.beginPath();
+                ctx.arc(config.basePoint.x, config.basePoint.y, BASE_POINT_RADIUS, 0, Math.PI * 2); // 半径と色を使用
+                ctx.fill();
+                
 
                 ctx.strokeStyle = '#6B7280';
                 ctx.lineWidth = 2;
@@ -340,7 +332,7 @@
 
                 ctx.fillStyle = '#4B5563';
                 // フォントサイズを動的に設定。キャンバスの高さの割合で指定
-                ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES)}px Inter`; 
+                ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES_RATIO)}px Inter`; 
 
                 ctx.textAlign = 'right';
                 ctx.fillText(`高さ: ${config.leftLine.lengthM.toFixed(1)}m`, config.leftLine.x - ctx.lineWidth / 2 - 10, config.leftLine.y1 + foliageRadius);
@@ -349,18 +341,21 @@
                 ctx.fillText(`高さ: ${config.rightLine.lengthM.toFixed(1)}m`, config.rightLine.x + ctx.lineWidth / 2 + 10, config.rightLine.y1 + foliageRadius);
 
                 ctx.textAlign = 'center';
+                // `midXBetweenLines` を定義してから使用する
                 const midXBetweenLines = (config.leftLine.x + config.rightLine.x) / 2;
-                ctx.fillText(`距離: ${config.lineDistanceM.toFixed(1)}m`, midXBetweenLines, floorY + 30);
+                // 「距離」テキストの位置を地面より上、かつキャンバス内で動的に調整
+                ctx.fillText(`距離: ${config.lineDistanceM.toFixed(1)}m`, midXBetweenLines, floorY - (canvas.height * DISTANCE_TEXT_OFFSET_FROM_FLOOR_RATIO));
 
                 // キャンバスタイトルフォントサイズを動的に設定
-                ctx.font = `bold ${Math.max(20, canvas.height * FONT_SIZE_CANVAS_TITLE)}px Inter`; 
+                ctx.font = `bold ${Math.max(20, canvas.height * FONT_SIZE_CANVAS_TITLE_RATIO)}px Inter`; 
                 ctx.fillStyle = angleColor;
-                ctx.fillText(`${angle.toFixed(2)}°`, canvas.width / 2, canvas.height * 0.1); // キャンバス上部中央に表示
+                ctx.fillText(`${angle.toFixed(2)}°`, canvas.width / 2, canvas.height * TOP_CANVAS_MARGIN_RATIO); // キャンバス上部中央に表示
 
-                ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES)}px Inter`; 
+                ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES_RATIO)}px Inter`; 
                 ctx.fillStyle = '#4B5563';
 
-                const horizontalGuideY = floorY - 20;
+                // 水平ガイドラインの位置を地面から動的に調整
+                const horizontalGuideY = floorY - (canvas.height * HORIZONTAL_GUIDE_OFFSET_FROM_FLOOR_RATIO);
 
                 const distLeftX_M = config.lineDistanceM * config.basePoint.relativeX;
                 ctx.strokeStyle = '#9CA3AF';
@@ -370,7 +365,8 @@
                 ctx.lineTo(config.basePoint.x, horizontalGuideY);
                 ctx.stroke();
                 ctx.textAlign = 'center';
-                ctx.fillText(`${distLeftX_M.toFixed(1)}m`, (config.leftLine.x + config.basePoint.x) / 2, horizontalGuideY - 10);
+                // 分割された距離テキストの位置をガイドラインより下、かつ動的に調整
+                ctx.fillText(`${distLeftX_M.toFixed(1)}m`, (config.leftLine.x + config.basePoint.x) / 2, horizontalGuideY + (canvas.height * SEGMENT_TEXT_OFFSET_FROM_GUIDE_RATIO));
 
 
                 const distRightX_M = config.lineDistanceM * (1 - config.basePoint.relativeX);
@@ -379,7 +375,8 @@
                 ctx.lineTo(config.rightLine.x, horizontalGuideY);
                 ctx.stroke();
                 ctx.textAlign = 'center';
-                ctx.fillText(`${distRightX_M.toFixed(1)}m`, (config.rightLine.x + config.basePoint.x) / 2, horizontalGuideY - 10);
+                // 分割された距離テキストの位置をガイドラインより下、かつ動的に調整
+                ctx.fillText(`${distRightX_M.toFixed(1)}m`, (config.rightLine.x + config.basePoint.x) / 2, horizontalGuideY + (canvas.height * SEGMENT_TEXT_OFFSET_FROM_GUIDE_RATIO));
 
                 ctx.setLineDash([]);
             }
@@ -452,11 +449,8 @@
                     isDragging = true;
                     dragTarget = 'rightLineTopHandle';
                 }
-                // 基点 (水平位置調整用) - 画像の範囲で判定
-                else if (x > config.basePoint.x - basePointImageDrawWidth / 2 - handleRadius &&
-                         x < config.basePoint.x + basePointImageDrawWidth / 2 + handleRadius &&
-                         y > config.basePoint.y - handleRadius &&
-                         y < config.basePoint.y + basePointImageDrawHeight + handleRadius) {
+                // 基点 (水平位置調整用) - 円の範囲で判定
+                else if (Math.hypot(x - config.basePoint.x, y - config.basePoint.y) < BASE_POINT_RADIUS + handleRadius) {
                     isDragging = true;
                     dragTarget = 'basePoint';
                 }
@@ -577,30 +571,31 @@
 
             // スライダーと数値入力の表示を同期させる関数
             function updateSliderValues() {
-                if (leftLineLengthValue) {
-                    leftLineLengthValue.textContent = `${config.leftLine.lengthM.toFixed(1)}m`;
-                }
+                // これらの要素は現在HTMLに存在しないため、textContentの設定は削除します。
+                // if (leftLineLengthValue) {
+                //     leftLineLengthValue.textContent = `${config.leftLine.lengthM.toFixed(1)}m`;
+                // }
                 if (leftLineLengthNumber) {
                     leftLineLengthNumber.value = config.leftLine.lengthM.toFixed(1);
                 }
 
-                if (rightLineLengthValue) {
-                    rightLineLengthValue.textContent = `${config.rightLine.lengthM.toFixed(1)}m`;
-                }
+                // if (rightLineLengthValue) {
+                //     rightLineLengthValue.textContent = `${config.rightLine.lengthM.toFixed(1)}m`;
+                // }
                 if (rightLineLengthNumber) {
                     rightLineLengthNumber.value = config.rightLine.lengthM.toFixed(1);
                 }
 
-                if (lineDistanceValue) {
-                    lineDistanceValue.textContent = `${config.lineDistanceM.toFixed(1)}m`;
-                }
+                // if (lineDistanceValue) {
+                //     lineDistanceValue.textContent = `${config.lineDistanceM.toFixed(1)}m`;
+                // }
                 if (lineDistanceNumber) {
                     lineDistanceNumber.value = config.lineDistanceM.toFixed(1);
                 }
 
-                if (basePointXValue) {
-                    basePointXValue.textContent = `中央 (${(config.basePoint.relativeX * 100).toFixed(0)}%)`;
-                }
+                // if (basePointXValue) {
+                //     basePointXValue.textContent = `中央 (${(config.basePoint.relativeX * 100).toFixed(0)}%)`;
+                // }
                 if (basePointXNumber) {
                     basePointXNumber.value = (config.basePoint.relativeX * 100).toFixed(0);
                 }
@@ -613,25 +608,17 @@
                 canvas.height = canvas.width / 2; // 常に2:1のアスペクト比を維持
 
                 // 地面のY座標をキャンバス高さに対する割合で設定
-                // 下部にパディングを残しつつ、動的に計算
                 floorY = canvas.height * (1 - BOTTOM_CANVAS_PADDING_RATIO);
 
                 // 左線分の固定X座標をキャンバス幅に対する割合で設定
                 leftLineFixedX = canvas.width * LEFT_LINE_FIXED_X_RATIO; 
                 
                 // 線分の高さ描画/ドラッグ時の最大ピクセル高を動的に設定
-                // キャンバスの高さから上部マージンを引いた値
                 LINE_LENGTH_PX_DRAW_MAX_DYNAMIC = canvas.height * (1 - TOP_CANVAS_MARGIN_RATIO - BOTTOM_CANVAS_PADDING_RATIO);
-                LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE = LINE_LENGTH_PX_DRAW_MAX_DYNAMIC; // ドラッグも同じ最大値を使用
+                LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE = LINE_LENGTH_PX_DRAW_MAX_DYNAMIC; 
 
                 // 樹木間の距離のピクセル最大値を動的に設定
-                // 左樹木のX座標からキャンバス右端マージンを引いた範囲
                 LINE_DISTANCE_PX_MAX_DYNAMIC = canvas.width * (1 - LEFT_LINE_FIXED_X_RATIO - RIGHT_CANVAS_MARGIN_RATIO);
-
-                // フォントサイズも動的に調整
-                // Math.max を使用して、最小フォントサイズを保証
-                ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES)}px Inter`; 
-                ctx.font = `bold ${Math.max(20, canvas.height * FONT_SIZE_CANVAS_TITLE)}px Inter`; 
 
                 draw();
             }
