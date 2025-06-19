@@ -15,6 +15,8 @@
         /* キャンバスの基本的なスタイル */
         canvas {
             @apply border-2 border-gray-300 rounded-lg bg-white;
+            /* タッチ操作時にデフォルトのブラウザスクロールを防ぐ */
+            touch-action: none; 
         }
         /* スライダーの見た目を調整（必要に応じて） */
         input[type="range"] {
@@ -64,8 +66,8 @@
                 <div>
                     <label for="leftLineLength" class="block text-gray-600 text-sm font-medium mb-2">左樹木の高さ (m):</label>
                     <div class="flex items-center space-x-2">
-                        <input type="range" id="leftLineLength" min="3" max="25" value="10" step="0.1" class="range-slider">
-                        <input type="number" id="leftLineLengthNumber" min="3" max="25" value="10.0" step="0.1">
+                        <input type="range" id="leftLineLength" min="3" max="30" value="10" step="0.1" class="range-slider">
+                        <input type="number" id="leftLineLengthNumber" min="3" max="30" value="10.0" step="0.1">
                     </div>
                 </div>
 
@@ -73,8 +75,8 @@
                 <div>
                     <label for="rightLineLength" class="block text-gray-600 text-sm font-medium mb-2">右樹木の高さ (m):</label>
                     <div class="flex items-center space-x-2">
-                        <input type="range" id="rightLineLength" min="3" max="25" value="10" step="0.1" class="range-slider">
-                        <input type="number" id="rightLineLengthNumber" min="3" max="25" value="10.0" step="0.1">
+                        <input type="range" id="rightLineLength" min="3" max="30" value="10" step="0.1" class="range-slider">
+                        <input type="number" id="rightLineLengthNumber" min="3" max="30" value="10.0" step="0.1">
                     </div>
                 </div>
 
@@ -82,8 +84,8 @@
                 <div>
                     <label for="lineDistance" class="block text-gray-600 text-sm font-medium mb-2">樹木間の距離 (m):</label>
                     <div class="flex items-center space-x-2">
-                        <input type="range" id="lineDistance" min="4" max="50" value="25" step="0.1" class="range-slider">
-                        <input type="number" id="lineDistanceNumber" min="4" max="50" value="25.0" step="0.1">
+                        <input type="range" id="lineDistance" min="4" max="60" value="25" step="0.1" class="range-slider">
+                        <input type="number" id="lineDistanceNumber" min="4" max="60" value="25.0" step="0.1">
                     </div>
                 </div>
 
@@ -144,7 +146,7 @@
             // --- メートル値をピクセル値にマッピングするための設定 ---
             const LINE_LENGTH_PX_MIN = 80;  // 3mに対応
             const LINE_DISTANCE_PX_MIN = 70; // 4mに対応
-            const BASE_POINT_HEIGHT_PX_OFFSET = 30; // 30cmを視覚的に表現 (グローバルスコープに移動)
+            const BASE_POINT_HEIGHT_PX_OFFSET = 30; // 30cmを視覚的に表現
 
 
             // スライダー設定から取得したメートル範囲
@@ -156,12 +158,12 @@
             const LINE_DISTANCE_M_MAX = parseFloat(lineDistanceSlider.max); 
 
             // 各要素のキャンバス内でのマージンや位置の割合
-            const TOP_CANVAS_MARGIN_RATIO = 0.1; // キャンバス高さに対する上部マージンの割合
-            const BOTTOM_CANVAS_PADDING_RATIO = 0.15; // キャンバス高さに対する地面のパディングの割合
-            const LEFT_LINE_FIXED_X_RATIO = 0.15; // キャンバス幅に対する左樹木のX座標の割合
-            const RIGHT_CANVAS_MARGIN_RATIO = 0.05; // キャンバス幅に対する右端マージンの割合 (5%に調整)
-            const FONT_SIZE_CANVAS_TITLE = 0.12; // キャンバス内タイトルフォントサイズのキャンバス高さに対する割合
-            const FONT_SIZE_CANVAS_VALUES = 0.04; // キャンバス内数値フォントサイズのキャンバス高さに対する割合
+            const TOP_CANVAS_MARGIN_RATIO = 0.1; 
+            const BOTTOM_CANVAS_PADDING_RATIO = 0.15; 
+            const LEFT_LINE_FIXED_X_RATIO = 0.15; 
+            const RIGHT_CANVAS_MARGIN_RATIO = 0.05; 
+            const FONT_SIZE_CANVAS_TITLE = 0.12; 
+            const FONT_SIZE_CANVAS_VALUES = 0.04; 
 
 
             let config = {
@@ -212,7 +214,7 @@
                 config.rightLine.y2 = floorY;
                 config.rightLine.y1 = floorY - rightLineLengthPx;
 
-                config.basePoint.y = floorY - BASE_POINT_HEIGHT_PX_OFFSET; // BASE_POINT_HEIGHT_PX_OFFSET を参照
+                config.basePoint.y = floorY - BASE_POINT_HEIGHT_PX_OFFSET; 
                 const currentHorizontalSpan = config.rightLine.x - config.leftLine.x;
                 config.basePoint.x = config.leftLine.x + currentHorizontalSpan * config.basePoint.relativeX;
             }
@@ -382,65 +384,116 @@
                 ctx.setLineDash([]);
             }
 
+            /**
+             * イベントからクライアントX, Y座標を取得するヘルパー関数
+             * マウスイベントとタッチイベントの両方に対応
+             */
+            function getClientXY(e) {
+                if (e.touches && e.touches.length > 0) {
+                    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+                return { x: e.clientX, y: e.clientY };
+            }
+
             // --- イベントリスナー ---
+            // マウスイベント
             canvas.addEventListener('mousedown', (e) => {
                 const rect = canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
-
-                const handleRadius = 15;
-
-                if (Math.hypot(mouseX - config.leftLine.x, mouseY - config.leftLine.y1) < handleRadius) {
-                    isDragging = true;
-                    dragTarget = 'leftLineTopHandle';
-                }
-                else if (Math.hypot(mouseX - config.rightLine.x, mouseY - config.rightLine.y1) < handleRadius) {
-                    isDragging = true;
-                    dragTarget = 'rightLineTopHandle';
-                }
-                else if (mouseX > config.basePoint.x - basePointImageDrawWidth / 2 - handleRadius &&
-                         mouseX < config.basePoint.x + basePointImageDrawWidth / 2 + handleRadius &&
-                         mouseY > config.basePoint.y - handleRadius &&
-                         mouseY < config.basePoint.y + basePointImageDrawHeight + handleRadius) {
-                    isDragging = true;
-                    dragTarget = 'basePoint';
-                }
-                else if (mouseX > config.rightLine.x - (ctx.lineWidth / 2 + handleRadius) && mouseX < config.rightLine.x + (ctx.lineWidth / 2 + handleRadius) &&
-                         mouseY > config.rightLine.y1 && mouseY < config.rightLine.y2) {
-                    isDragging = true;
-                    dragTarget = 'rightLine';
-                }
+                handleInteractionStart(mouseX, mouseY);
             });
 
             canvas.addEventListener('mousemove', (e) => {
                 if (!isDragging) return;
-
                 const rect = canvas.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
+                handleInteractionMove(mouseX, mouseY);
+            });
+
+            canvas.addEventListener('mouseup', () => {
+                handleInteractionEnd();
+            });
+
+            // タッチイベント
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // デフォルトのブラウザスクロールなどを防ぐ
+                const rect = canvas.getBoundingClientRect();
+                const touchX = e.touches[0].clientX - rect.left;
+                const touchY = e.touches[0].clientY - rect.top;
+                handleInteractionStart(touchX, touchY);
+            }, { passive: false }); // preventDefault() を使用するために passive: false を設定
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault(); // デフォルトのブラウザスクロールなどを防ぐ
+                const rect = canvas.getBoundingClientRect();
+                const touchX = e.touches[0].clientX - rect.left;
+                const touchY = e.touches[0].clientY - rect.top;
+                handleInteractionMove(touchX, touchY);
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', () => {
+                handleInteractionEnd();
+            });
+
+            // マウスとタッチの共通処理
+            function handleInteractionStart(x, y) {
+                const handleRadius = 15; // ドラッグしやすいように半径を大きめに設定
+
+                // 左線分の上端ハンドル (高さ調整用)
+                if (Math.hypot(x - config.leftLine.x, y - config.leftLine.y1) < handleRadius) {
+                    isDragging = true;
+                    dragTarget = 'leftLineTopHandle';
+                }
+                // 右線分の上端ハンドル (高さ調整用)
+                else if (Math.hypot(x - config.rightLine.x, y - config.rightLine.y1) < handleRadius) {
+                    isDragging = true;
+                    dragTarget = 'rightLineTopHandle';
+                }
+                // 基点 (水平位置調整用) - 画像の範囲で判定
+                else if (x > config.basePoint.x - basePointImageDrawWidth / 2 - handleRadius &&
+                         x < config.basePoint.x + basePointImageDrawWidth / 2 + handleRadius &&
+                         y > config.basePoint.y - handleRadius &&
+                         y < config.basePoint.y + basePointImageDrawHeight + handleRadius) {
+                    isDragging = true;
+                    dragTarget = 'basePoint';
+                }
+                // 右線分本体 (水平移動で線分間距離調整用)
+                // 左線分はX軸固定のため、右線分のみ水平ドラッグ可能
+                else if (x > config.rightLine.x - (ctx.lineWidth / 2 + handleRadius) && x < config.rightLine.x + (ctx.lineWidth / 2 + handleRadius) &&
+                         y > config.rightLine.y1 && y < config.rightLine.y2) {
+                    isDragging = true;
+                    dragTarget = 'rightLine';
+                }
+            }
+
+            function handleInteractionMove(x, y) {
+                if (!isDragging) return;
 
                 switch (dragTarget) {
                     case 'leftLineTopHandle':
-                        const newLeftLengthPx = floorY - mouseY;
+                        const newLeftLengthPx = floorY - y;
                         config.leftLine.lengthM = map(newLeftLengthPx, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE, LEFT_LINE_LENGTH_M_MIN, LEFT_LINE_LENGTH_M_MAX);
                         leftLineLengthSlider.value = config.leftLine.lengthM.toFixed(1);
                         leftLineLengthNumber.value = config.leftLine.lengthM.toFixed(1);
                         break;
                     case 'rightLineTopHandle':
-                        const newRightLengthPx = floorY - mouseY;
+                        const newRightLengthPx = floorY - y;
                         config.rightLine.lengthM = map(newRightLengthPx, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE, RIGHT_LINE_LENGTH_M_MIN, RIGHT_LINE_LENGTH_M_MAX);
                         rightLineLengthSlider.value = config.rightLine.lengthM.toFixed(1);
                         rightLineLengthNumber.value = config.rightLine.lengthM.toFixed(1);
                         break;
                     case 'basePoint':
                         const currentHorizontalSpan = config.rightLine.x - config.leftLine.x;
-                        let newRelativeX = (mouseX - config.leftLine.x) / currentHorizontalSpan;
+                        let newRelativeX = (x - config.leftLine.x) / currentHorizontalSpan;
                         config.basePoint.relativeX = Math.max(0, Math.min(1, newRelativeX));
                         basePointXSlider.value = (config.basePoint.relativeX * 100).toFixed(0);
                         basePointXNumber.value = (config.basePoint.relativeX * 100).toFixed(0);
                         break;
                     case 'rightLine':
-                        const newRightLineX = mouseX;
+                        const newRightLineX = x;
                         const newDistancePx = newRightLineX - leftLineFixedX;
                         config.lineDistanceM = map(newDistancePx, LINE_DISTANCE_PX_MIN, LINE_DISTANCE_PX_MAX_DYNAMIC, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX);
                         lineDistanceSlider.value = config.lineDistanceM.toFixed(1);
@@ -449,12 +502,12 @@
                 }
                 draw();
                 updateSliderValues();
-            });
+            }
 
-            canvas.addEventListener('mouseup', () => {
+            function handleInteractionEnd() {
                 isDragging = false;
                 dragTarget = null;
-            });
+            }
 
             // スライダーの値が変更されたときのイベントリスナー
             leftLineLengthSlider.addEventListener('input', (e) => {
