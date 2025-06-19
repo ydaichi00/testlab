@@ -129,9 +129,27 @@
             const basePointXValue = document.querySelector('#basePointX + span');
 
 
-            // --- 基点の表示設定 ---
+            // --- 画像の読み込みと設定 (再導入) ---
+            const basePointImage = new Image();
+            basePointImage.src = 'https://placehold.co/60x30/4A5568/FFFFFF?text=Robot'; // ロボット画像のURL
+            let basePointImageLoaded = false;
+            let basePointImageDrawWidth = 60; // 初期描画サイズ（後でCanvasサイズに応じて調整可能）
+            let basePointImageDrawHeight = 0;
+
+            basePointImage.onload = () => {
+                basePointImageLoaded = true;
+                // 画像のアスペクト比を維持して高さを計算
+                basePointImageDrawHeight = (basePointImageDrawWidth / basePointImage.naturalWidth) * basePointImage.naturalHeight;
+                draw();
+            };
+            basePointImage.onerror = () => {
+                basePointImageLoaded = false;
+                console.error("Robot image failed to load, falling back to circle."); // エラーログ
+                draw(); // ロード失敗時は円で描画
+            };
+            // --- 基点の表示設定（円のフォールバック用。画像が優先される） ---
             const BASE_POINT_RADIUS = 8; // 基点の円の半径
-            const BASE_POINT_COLOR = '#FFA500'; // オレンジ色に設定
+            const BASE_POINT_COLOR = '#EF4444'; // フォールバック時の赤色（以前のコードに合わせる）
 
 
             // --- メートル値をピクセル値にマッピングするための設定 ---
@@ -157,9 +175,9 @@
             const FONT_SIZE_CANVAS_VALUES_RATIO = 0.04; // キャンバス内数値（高さ、距離）のフォントサイズ
 
             // 新しく追加する比率
-            const DISTANCE_TEXT_OFFSET_FROM_FLOOR_RATIO = 0.1; // 地面からの距離テキストのオフセット
+            const DISTANCE_TEXT_OFFSET_BELOW_FLOOR_RATIO = 0.07; // 地面より下の距離テキストのオフセット
             const SEGMENT_TEXT_OFFSET_FROM_GUIDE_RATIO = 0.04; // 分割された距離テキストのガイド線からのオフセット
-            const FOLIAGE_RADIUS_RATIO = 0.06; // 樹木の葉の半径のキャンバス高さに対する比率 (約25px for 400px height)
+            const FOLIAGE_RADIUS_RATIO = 0.08; // 樹木の葉の半径のキャンバス高さに対する比率 (約25px for 400px height -> 0.06だったのを大きく)
             const TRUNK_WIDTH_RATIO = 0.0375; // 樹木の幹の太さのキャンバス高さに対する比率 (約15px for 400px height)
             const HORIZONTAL_GUIDE_OFFSET_FROM_FLOOR_RATIO = 0.05; // 水平ガイドラインの地面からのオフセット
 
@@ -281,11 +299,20 @@
                 ctx.arc(config.rightLine.x, config.rightLine.y1, 8, 0, Math.PI * 2);
                 ctx.fill();
 
-                // 基点 (オレンジ色の円) を描画
-                ctx.fillStyle = BASE_POINT_COLOR; // オレンジ色を使用
-                ctx.beginPath();
-                ctx.arc(config.basePoint.x, config.basePoint.y, BASE_POINT_RADIUS, 0, Math.PI * 2); // 半径と色を使用
-                ctx.fill();
+                // 基点 (ロボット画像またはフォールバックの円) を描画
+                if (basePointImageLoaded) {
+                    // 画像をキャンバスの中心に配置するように調整
+                    ctx.drawImage(basePointImage,
+                                  config.basePoint.x - basePointImageDrawWidth / 2,
+                                  config.basePoint.y, // Y座標はBASE_POINT_HEIGHT_PX_OFFSETで既に調整済み
+                                  basePointImageDrawWidth,
+                                  basePointImageDrawHeight);
+                } else {
+                    ctx.fillStyle = BASE_POINT_COLOR; // フォールバック時の色
+                    ctx.beginPath();
+                    ctx.arc(config.basePoint.x, config.basePoint.y, BASE_POINT_RADIUS, 0, Math.PI * 2);
+                    ctx.fill();
+                }
                 
 
                 ctx.strokeStyle = '#6B7280';
@@ -335,16 +362,16 @@
                 ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES_RATIO)}px Inter`; 
 
                 ctx.textAlign = 'right';
-                ctx.fillText(`高さ: ${config.leftLine.lengthM.toFixed(1)}m`, config.leftLine.x - ctx.lineWidth / 2 - 10, config.leftLine.y1 + foliageRadius);
+                ctx.fillText(`H: ${config.leftLine.lengthM.toFixed(1)}m`, config.leftLine.x - ctx.lineWidth / 2 - 10, config.leftLine.y1 + foliageRadius);
 
                 ctx.textAlign = 'left';
-                ctx.fillText(`高さ: ${config.rightLine.lengthM.toFixed(1)}m`, config.rightLine.x + ctx.lineWidth / 2 + 10, config.rightLine.y1 + foliageRadius);
+                ctx.fillText(`H: ${config.rightLine.lengthM.toFixed(1)}m`, config.rightLine.x + ctx.lineWidth / 2 + 10, config.rightLine.y1 + foliageRadius);
 
                 ctx.textAlign = 'center';
                 // `midXBetweenLines` を定義してから使用する
                 const midXBetweenLines = (config.leftLine.x + config.rightLine.x) / 2;
-                // 「距離」テキストの位置を地面より上、かつキャンバス内で動的に調整
-                ctx.fillText(`距離: ${config.lineDistanceM.toFixed(1)}m`, midXBetweenLines, floorY - (canvas.height * DISTANCE_TEXT_OFFSET_FROM_FLOOR_RATIO));
+                // 「距離」テキストの位置を地面より下、かつキャンバス内で動的に調整
+                ctx.fillText(`D: ${config.lineDistanceM.toFixed(1)}m`, midXBetweenLines, floorY + (canvas.height * DISTANCE_TEXT_OFFSET_BELOW_FLOOR_RATIO));
 
                 // キャンバスタイトルフォントサイズを動的に設定
                 ctx.font = `bold ${Math.max(20, canvas.height * FONT_SIZE_CANVAS_TITLE_RATIO)}px Inter`; 
@@ -449,8 +476,17 @@
                     isDragging = true;
                     dragTarget = 'rightLineTopHandle';
                 }
-                // 基点 (水平位置調整用) - 円の範囲で判定
-                else if (Math.hypot(x - config.basePoint.x, y - config.basePoint.y) < BASE_POINT_RADIUS + handleRadius) {
+                // 基点 (水平位置調整用) - 画像の範囲で判定 (画像読み込み成功時)
+                else if (basePointImageLoaded &&
+                         x > config.basePoint.x - basePointImageDrawWidth / 2 - handleRadius &&
+                         x < config.basePoint.x + basePointImageDrawWidth / 2 + handleRadius &&
+                         y > config.basePoint.y - handleRadius &&
+                         y < config.basePoint.y + basePointImageDrawHeight + handleRadius) {
+                    isDragging = true;
+                    dragTarget = 'basePoint';
+                }
+                // 基点 (水平位置調整用) - 円の範囲で判定 (画像読み込み失敗時)
+                else if (!basePointImageLoaded && Math.hypot(x - config.basePoint.x, y - config.basePoint.y) < BASE_POINT_RADIUS + handleRadius) {
                     isDragging = true;
                     dragTarget = 'basePoint';
                 }
