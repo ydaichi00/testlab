@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> 上空視界 - 角度計算 </title>
+    <title>樹木間上空視界イメージ</title>
     <!-- Tailwind CSS CDNを読み込み -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -44,7 +44,7 @@
     <div class="container mx-auto p-6 bg-white rounded-xl shadow-lg flex flex-col md:flex-row space-y-6 md:space-y-0 md:space-x-6 max-w-7xl w-full">
         <!-- メインの表示エリア (キャンバスと角度表示) -->
         <div class="flex-1 flex flex-col space-y-4">
-            <h1 class="text-3xl font-bold text-gray-800 text-center mb-4">樹木間、上空視界角度計算</h1>
+            <h1 class="text-3xl font-bold text-gray-800 text-center mb-4">樹木間上空視界イメージ</h1>
             <!-- キャンバス要素 - 線分と基点を描画するメインエリア -->
             <canvas id="angleCanvas" width="800" height="400" class="flex-grow"></canvas>
 
@@ -143,7 +143,9 @@
 
             // --- メートル値をピクセル値にマッピングするための設定 ---
             const LINE_LENGTH_PX_MIN = 80;  // 3mに対応
-            // LINE_DISTANCE_PX_MAX は resizeCanvas で動的に計算されます
+            const LINE_DISTANCE_PX_MIN = 70; // 4mに対応
+            const BASE_POINT_HEIGHT_PX_OFFSET = 30; // 30cmを視覚的に表現 (グローバルスコープに移動)
+
 
             // スライダー設定から取得したメートル範囲
             const LEFT_LINE_LENGTH_M_MIN = parseFloat(leftLineLengthSlider.min);
@@ -153,9 +155,13 @@
             const LINE_DISTANCE_M_MIN = parseFloat(lineDistanceSlider.min);
             const LINE_DISTANCE_M_MAX = parseFloat(lineDistanceSlider.max); 
 
-            const BASE_POINT_HEIGHT_PX_OFFSET = 30;
-            const TOP_CANVAS_MARGIN = 50; // キャンバス上部から樹木の頂点までの最小マージン
-            const RIGHT_CANVAS_MARGIN = 70; // キャンバス右端からのマージン（テキストや樹木が見切れないように）
+            // 各要素のキャンバス内でのマージンや位置の割合
+            const TOP_CANVAS_MARGIN_RATIO = 0.1; // キャンバス高さに対する上部マージンの割合
+            const BOTTOM_CANVAS_PADDING_RATIO = 0.15; // キャンバス高さに対する地面のパディングの割合
+            const LEFT_LINE_FIXED_X_RATIO = 0.15; // キャンバス幅に対する左樹木のX座標の割合
+            const RIGHT_CANVAS_MARGIN_RATIO = 0.05; // キャンバス幅に対する右端マージンの割合 (5%に調整)
+            const FONT_SIZE_CANVAS_TITLE = 0.12; // キャンバス内タイトルフォントサイズのキャンバス高さに対する割合
+            const FONT_SIZE_CANVAS_VALUES = 0.04; // キャンバス内数値フォントサイズのキャンバス高さに対する割合
 
 
             let config = {
@@ -172,7 +178,7 @@
             let leftLineFixedX;
             let LINE_LENGTH_PX_DRAW_MAX_DYNAMIC;
             let LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE;
-            let LINE_DISTANCE_PX_MAX_DYNAMIC; // LINE_DISTANCE_PX_MAX を動的にする
+            let LINE_DISTANCE_PX_MAX_DYNAMIC; 
 
             /**
              * 値を入力範囲から出力範囲へマッピングする関数
@@ -193,11 +199,9 @@
              * これにより、すべての座標がキャンバスに対して相対的になり、制約が維持されます。
              */
             function calculatePositions() {
-                // LINE_DISTANCE_PX_MINをlocalスコープで定義
-                const LINE_DISTANCE_PX_MIN_LOCAL = 70; // 4mに対応
                 const leftLineLengthPx = map(config.leftLine.lengthM, LEFT_LINE_LENGTH_M_MIN, LEFT_LINE_LENGTH_M_MAX, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAW_MAX_DYNAMIC);
                 const rightLineLengthPx = map(config.rightLine.lengthM, RIGHT_LINE_LENGTH_M_MIN, RIGHT_LINE_LENGTH_M_MAX, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAW_MAX_DYNAMIC);
-                const lineDistancePx = map(config.lineDistanceM, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX, LINE_DISTANCE_PX_MIN_LOCAL, LINE_DISTANCE_PX_MAX_DYNAMIC); // 動的な最大値を使用
+                const lineDistancePx = map(config.lineDistanceM, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX, LINE_DISTANCE_PX_MIN, LINE_DISTANCE_PX_MAX_DYNAMIC); 
 
                 config.leftLine.x = leftLineFixedX;
                 config.rightLine.x = config.leftLine.x + lineDistancePx;
@@ -208,7 +212,7 @@
                 config.rightLine.y2 = floorY;
                 config.rightLine.y1 = floorY - rightLineLengthPx;
 
-                config.basePoint.y = floorY - BASE_POINT_HEIGHT_PX_OFFSET;
+                config.basePoint.y = floorY - BASE_POINT_HEIGHT_PX_OFFSET; // BASE_POINT_HEIGHT_PX_OFFSET を参照
                 const currentHorizontalSpan = config.rightLine.x - config.leftLine.x;
                 config.basePoint.x = config.leftLine.x + currentHorizontalSpan * config.basePoint.relativeX;
             }
@@ -333,7 +337,8 @@
 
 
                 ctx.fillStyle = '#4B5563';
-                ctx.font = 'bold 16px Inter';
+                // フォントサイズを動的に設定。キャンバスの高さの割合で指定
+                ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES)}px Inter`; 
 
                 ctx.textAlign = 'right';
                 ctx.fillText(`高さ: ${config.leftLine.lengthM.toFixed(1)}m`, config.leftLine.x - ctx.lineWidth / 2 - 10, config.leftLine.y1 + foliageRadius);
@@ -345,11 +350,12 @@
                 const midXBetweenLines = (config.leftLine.x + config.rightLine.x) / 2;
                 ctx.fillText(`距離: ${config.lineDistanceM.toFixed(1)}m`, midXBetweenLines, floorY + 30);
 
-                ctx.font = 'bold 48px Inter';
+                // キャンバスタイトルフォントサイズを動的に設定
+                ctx.font = `bold ${Math.max(20, canvas.height * FONT_SIZE_CANVAS_TITLE)}px Inter`; 
                 ctx.fillStyle = angleColor;
-                ctx.fillText(`${angle.toFixed(2)}°`, canvas.width / 2, 50);
+                ctx.fillText(`${angle.toFixed(2)}°`, canvas.width / 2, canvas.height * 0.1); // キャンバス上部中央に表示
 
-                ctx.font = 'bold 14px Inter';
+                ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES)}px Inter`; 
                 ctx.fillStyle = '#4B5563';
 
                 const horizontalGuideY = floorY - 20;
@@ -436,9 +442,7 @@
                     case 'rightLine':
                         const newRightLineX = mouseX;
                         const newDistancePx = newRightLineX - leftLineFixedX;
-                        // LINE_DISTANCE_PX_MINをlocalスコープで定義
-                        const LINE_DISTANCE_PX_MIN_LOCAL = 70; // 4mに対応
-                        config.lineDistanceM = map(newDistancePx, LINE_DISTANCE_PX_MIN_LOCAL, LINE_DISTANCE_PX_MAX_DYNAMIC, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX); // 動的な最大値を使用
+                        config.lineDistanceM = map(newDistancePx, LINE_DISTANCE_PX_MIN, LINE_DISTANCE_PX_MAX_DYNAMIC, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX);
                         lineDistanceSlider.value = config.lineDistanceM.toFixed(1);
                         lineDistanceNumber.value = config.lineDistanceM.toFixed(1);
                         break;
@@ -553,17 +557,28 @@
             function resizeCanvas() {
                 const canvasParent = canvas.parentElement;
                 canvas.width = canvasParent.clientWidth;
-                canvas.height = canvas.width / 2; 
+                canvas.height = canvas.width / 2; // 常に2:1のアスペクト比を維持
 
-                floorY = canvas.height - 70;
-                leftLineFixedX = canvas.width * 0.15; 
+                // 地面のY座標をキャンバス高さに対する割合で設定
+                // 下部にパディングを残しつつ、動的に計算
+                floorY = canvas.height * (1 - BOTTOM_CANVAS_PADDING_RATIO);
+
+                // 左線分の固定X座標をキャンバス幅に対する割合で設定
+                leftLineFixedX = canvas.width * LEFT_LINE_FIXED_X_RATIO; 
                 
-                LINE_LENGTH_PX_DRAW_MAX_DYNAMIC = floorY - TOP_CANVAS_MARGIN;
-                LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE = LINE_LENGTH_PX_DRAW_MAX_DYNAMIC;
+                // 線分の高さ描画/ドラッグ時の最大ピクセル高を動的に設定
+                // キャンバスの高さから上部マージンを引いた値
+                LINE_LENGTH_PX_DRAW_MAX_DYNAMIC = canvas.height * (1 - TOP_CANVAS_MARGIN_RATIO - BOTTOM_CANVAS_PADDING_RATIO);
+                LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE = LINE_LENGTH_PX_DRAW_MAX_DYNAMIC; // ドラッグも同じ最大値を使用
 
                 // 樹木間の距離のピクセル最大値を動的に設定
-                // 左固定X座標から右端マージンを引いた範囲を最大距離として使用
-                LINE_DISTANCE_PX_MAX_DYNAMIC = canvas.width - leftLineFixedX - RIGHT_CANVAS_MARGIN;
+                // 左樹木のX座標からキャンバス右端マージンを引いた範囲
+                LINE_DISTANCE_PX_MAX_DYNAMIC = canvas.width * (1 - LEFT_LINE_FIXED_X_RATIO - RIGHT_CANVAS_MARGIN_RATIO);
+
+                // フォントサイズも動的に調整
+                // Math.max を使用して、最小フォントサイズを保証
+                ctx.font = `bold ${Math.max(12, canvas.height * FONT_SIZE_CANVAS_VALUES)}px Inter`; 
+                ctx.font = `bold ${Math.max(20, canvas.height * FONT_SIZE_CANVAS_TITLE)}px Inter`; 
 
                 draw();
             }
