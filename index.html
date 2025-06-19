@@ -117,7 +117,7 @@
             const lineDistanceNumber = document.getElementById('lineDistanceNumber');
             const basePointXNumber = document.getElementById('basePointXNumber');
 
-            // スライダーの横に表示される値の要素 (以前のバージョンのIDを使用)
+            // スライダーの横に表示される値の要素
             const leftLineLengthValue = document.querySelector('#leftLineLength + span');
             const rightLineLengthValue = document.querySelector('#rightLineLength + span');
             const lineDistanceValue = document.querySelector('#lineDistance + span');
@@ -142,9 +142,8 @@
             };
 
             // --- メートル値をピクセル値にマッピングするための設定 ---
-            const LINE_LENGTH_PX_MIN = 80;
-            const LINE_DISTANCE_PX_MIN = 70;
-            const LINE_DISTANCE_PX_MAX = 700;
+            const LINE_LENGTH_PX_MIN = 80;  // 3mに対応
+            // LINE_DISTANCE_PX_MAX は resizeCanvas で動的に計算されます
 
             // スライダー設定から取得したメートル範囲
             const LEFT_LINE_LENGTH_M_MIN = parseFloat(leftLineLengthSlider.min);
@@ -155,7 +154,9 @@
             const LINE_DISTANCE_M_MAX = parseFloat(lineDistanceSlider.max); 
 
             const BASE_POINT_HEIGHT_PX_OFFSET = 30;
-            const TOP_CANVAS_MARGIN = 50;
+            const TOP_CANVAS_MARGIN = 50; // キャンバス上部から樹木の頂点までの最小マージン
+            const RIGHT_CANVAS_MARGIN = 70; // キャンバス右端からのマージン（テキストや樹木が見切れないように）
+
 
             let config = {
                 leftLine: { x: 0, y1: 0, y2: 0, lengthM: parseFloat(leftLineLengthSlider.value) },
@@ -171,16 +172,32 @@
             let leftLineFixedX;
             let LINE_LENGTH_PX_DRAW_MAX_DYNAMIC;
             let LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE;
+            let LINE_DISTANCE_PX_MAX_DYNAMIC; // LINE_DISTANCE_PX_MAX を動的にする
 
+            /**
+             * 値を入力範囲から出力範囲へマッピングする関数
+             * @param {number} value マッピングする値
+             * @param {number} in_min 入力範囲の最小値
+             * @param {number} in_max 入力範囲の最大値
+             * @param {number} out_min 出力範囲の最小値
+             * @param {number} out_max 出力範囲の最大値
+             * @returns {number} 出力範囲にマッピングされた値
+             */
             function map(value, in_min, in_max, out_min, out_max) {
                 value = Math.max(in_min, Math.min(value, in_max));
                 return (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
             }
 
+            /**
+             * 現在の設定 (メートル値) に基づいて、線分と基点のピクセル座標を計算します。
+             * これにより、すべての座標がキャンバスに対して相対的になり、制約が維持されます。
+             */
             function calculatePositions() {
+                // LINE_DISTANCE_PX_MINをlocalスコープで定義
+                const LINE_DISTANCE_PX_MIN_LOCAL = 70; // 4mに対応
                 const leftLineLengthPx = map(config.leftLine.lengthM, LEFT_LINE_LENGTH_M_MIN, LEFT_LINE_LENGTH_M_MAX, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAW_MAX_DYNAMIC);
                 const rightLineLengthPx = map(config.rightLine.lengthM, RIGHT_LINE_LENGTH_M_MIN, RIGHT_LINE_LENGTH_M_MAX, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAW_MAX_DYNAMIC);
-                const lineDistancePx = map(config.lineDistanceM, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX, LINE_DISTANCE_PX_MIN, LINE_DISTANCE_PX_MAX); 
+                const lineDistancePx = map(config.lineDistanceM, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX, LINE_DISTANCE_PX_MIN_LOCAL, LINE_DISTANCE_PX_MAX_DYNAMIC); // 動的な最大値を使用
 
                 config.leftLine.x = leftLineFixedX;
                 config.rightLine.x = config.leftLine.x + lineDistancePx;
@@ -419,7 +436,9 @@
                     case 'rightLine':
                         const newRightLineX = mouseX;
                         const newDistancePx = newRightLineX - leftLineFixedX;
-                        config.lineDistanceM = map(newDistancePx, LINE_DISTANCE_PX_MIN, LINE_DISTANCE_PX_MAX, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX);
+                        // LINE_DISTANCE_PX_MINをlocalスコープで定義
+                        const LINE_DISTANCE_PX_MIN_LOCAL = 70; // 4mに対応
+                        config.lineDistanceM = map(newDistancePx, LINE_DISTANCE_PX_MIN_LOCAL, LINE_DISTANCE_PX_MAX_DYNAMIC, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX); // 動的な最大値を使用
                         lineDistanceSlider.value = config.lineDistanceM.toFixed(1);
                         lineDistanceNumber.value = config.lineDistanceM.toFixed(1);
                         break;
@@ -466,7 +485,7 @@
                 config.leftLine.lengthM = value;
                 leftLineLengthSlider.value = value;
                 draw();
-                updateSliderValues(); // 数値入力からもスライダー値を更新
+                updateSliderValues();
             });
 
             rightLineLengthNumber.addEventListener('input', (e) => {
@@ -476,7 +495,7 @@
                 config.rightLine.lengthM = value;
                 rightLineLengthSlider.value = value;
                 draw();
-                updateSliderValues(); // 数値入力からもスライダー値を更新
+                updateSliderValues();
             });
 
             lineDistanceNumber.addEventListener('input', (e) => {
@@ -486,7 +505,7 @@
                 config.lineDistanceM = value;
                 lineDistanceSlider.value = value;
                 draw();
-                updateSliderValues(); // 数値入力からもスライダー値を更新
+                updateSliderValues();
             });
 
             basePointXNumber.addEventListener('input', (e) => {
@@ -496,12 +515,11 @@
                 config.basePoint.relativeX = value / 100;
                 basePointXSlider.value = value;
                 draw();
-                updateSliderValues(); // 数値入力からもスライダー値を更新
+                updateSliderValues();
             });
 
             // スライダーと数値入力の表示を同期させる関数
             function updateSliderValues() {
-                // `leftLineLengthValue` などがDOMに存在するか確認してから更新
                 if (leftLineLengthValue) {
                     leftLineLengthValue.textContent = `${config.leftLine.lengthM.toFixed(1)}m`;
                 }
@@ -543,6 +561,10 @@
                 LINE_LENGTH_PX_DRAW_MAX_DYNAMIC = floorY - TOP_CANVAS_MARGIN;
                 LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE = LINE_LENGTH_PX_DRAW_MAX_DYNAMIC;
 
+                // 樹木間の距離のピクセル最大値を動的に設定
+                // 左固定X座標から右端マージンを引いた範囲を最大距離として使用
+                LINE_DISTANCE_PX_MAX_DYNAMIC = canvas.width - leftLineFixedX - RIGHT_CANVAS_MARGIN;
+
                 draw();
             }
 
@@ -551,11 +573,8 @@
             window.addEventListener('resize', resizeCanvas);
 
             // 初期表示値を更新 (数値入力フィールドも含む)
-            // ここで一度 `updateSliderValues` を呼ぶことで、初期状態の同期を保証します。
             updateSliderValues();
         });
     </script>
 </body>
 </html>
-```
-I made some changes. `leftLineLengthValue`などの`<span>`要素の取得方法を`document.getElementById`から`document.querySelector`に変更しました。これは、HTML側でこれらの`<span>`に明示的な`id`が割り当てられていなかったためです。スライダーの直後の`<span>`を取得するセレクタを使用することで、正しく要素が取得され、`ReferenceError`が解消されるはずです。また、`updateSliderValues`関数内で、これらの要素が存在するかどうかを`if`文でチェックするようにも変更し、より堅牢性を高めま
