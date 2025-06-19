@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>角度計算アプリ - 樹木イメージ</title>
+    <!-- Tailwind CSS CDNを読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Interフォントを適用 */
+        body {
+            font-family: 'Inter', sans-serif;
+            @apply bg-gray-100 flex items-center justify-center min-h-screen p-4;
+        }
+        /* キャンバスの基本的なスタイル */
+        canvas {
+            @apply border-2 border-gray-300 rounded-lg bg-white;
+        }
+        /* スライダーの見た目を調整（必要に応じて） */
+        input[type="range"] {
+            @apply w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            @apply w-4 h-4 bg-blue-500 rounded-full;
+            -webkit-appearance: none; /* デフォルトのスタイルを無効化 */
+        }
+        input[type="range"]::-moz-range-thumb {
+            @apply w-4 h-4 bg-blue-500 rounded-full;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-6 bg-white rounded-xl shadow-lg flex flex-col space-y-6 max-w-7xl w-full">
+        <!-- メインの表示エリアと角度表示 -->
+        <div class="flex-1 flex flex-col space-y-4">
+            <h1 class="text-3xl font-bold text-gray-800 text-center mb-4">樹木間の角度計算アプリ</h1>
+            <!-- キャンバス要素 - 線分と基点を描画するメインエリア -->
+            <canvas id="angleCanvas" width="800" height="400" class="flex-grow"></canvas>
+
+            <!-- 角度の表示エリア -->
+            <div class="p-4 bg-blue-100 rounded-lg text-center shadow-inner">
+                <p class="text-lg font-semibold text-blue-800">現在の角度:</p>
+                <p id="angleDisplay" class="text-5xl font-extrabold text-blue-700 mt-2">0.00°</p>
+            </div>
+        </div>
+
+        <!-- スライダー操作UIエリア -->
+        <div class="w-full p-6 bg-gray-50 rounded-lg shadow-md flex-shrink-0">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-6 text-center">パラメータ調整</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- 左線分の長さスライダー (m単位) -->
+                <div>
+                    <label for="leftLineLength" class="block text-gray-600 text-sm font-medium mb-2">左樹木の高さ:</label>
+                    <input type="range" id="leftLineLength" min="3" max="25" value="10" step="0.1" class="range-slider">
+                    <span id="leftLineLengthValue" class="text-sm text-gray-500 float-right">10.0m</span>
+                </div>
+
+                <!-- 右線分の長さスライダー (m単位) -->
+                <div>
+                    <label for="rightLineLength" class="block text-gray-600 text-sm font-medium mb-2">右樹木の高さ:</label>
+                    <input type="range" id="rightLineLength" min="3" max="25" value="10" step="0.1" class="range-slider">
+                    <span id="rightLineLengthValue" class="text-sm text-gray-500 float-right">10.0m</span>
+                </div>
+
+                <!-- 線分間の距離スライダー (m単位) -->
+                <div>
+                    <label for="lineDistance" class="block text-gray-600 text-sm font-medium mb-2">樹木間の距離:</label>
+                    <input type="range" id="lineDistance" min="4" max="50" value="25" step="0.1" class="range-slider">
+                    <span id="lineDistanceValue" class="text-sm text-gray-500 float-right">25.0m</span>
+                </div>
+
+                <!-- 基点の左右位置スライダー -->
+                <div>
+                    <label for="basePointX" class="block text-gray-600 text-sm font-medium mb-2">基点の横位置:</label>
+                    <input type="range" id="basePointX" min="0" max="100" value="50" class="range-slider">
+                    <span id="basePointXValue" class="text-sm text-gray-500 float-right">中央 (50%)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('angleCanvas');
+            const ctx = canvas.getContext('2d');
+            const angleDisplay = document.getElementById('angleDisplay');
+
+            // Slider elements and their value display spans
+            const leftLineLengthSlider = document.getElementById('leftLineLength');
+            const rightLineLengthSlider = document.getElementById('rightLineLength');
+            const lineDistanceSlider = document.getElementById('lineDistance');
+            const basePointXSlider = document.getElementById('basePointX');
+
+            const leftLineLengthValue = document.getElementById('leftLineLengthValue');
+            const rightLineLengthValue = document.getElementById('rightLineLengthValue');
+            const lineDistanceValue = document.getElementById('lineDistanceValue');
+            const basePointXValue = document.getElementById('basePointXValue');
+
+            // --- 画像の読み込みと設定 ---
+            const basePointImage = new Image();
+            // 基点画像を汎用的なプレースホルダー画像に変更 (ユーザーのフィードバックに基づいて保持)
+            basePointImage.src = 'https://placehold.co/60x30/4A5568/FFFFFF?text=Robot';
+            let basePointImageLoaded = false;
+            let basePointImageDrawWidth = 60; // キャンバスに描画する画像の幅
+            let basePointImageDrawHeight = 0; // 画像の縦横比を維持するために後で計算
+
+            basePointImage.onload = () => {
+                basePointImageLoaded = true;
+                // 画像の縦横比を維持して描画高さを計算
+                basePointImageDrawHeight = (basePointImageDrawWidth / basePointImage.naturalWidth) * basePointImage.naturalHeight;
+                draw(); // 画像がロードされたら再描画
+            };
+            basePointImage.onerror = () => {
+                // ロード失敗時も代替描画に直接移行 (エラーメッセージはコンソールに出力しない)
+                basePointImageLoaded = false;
+                draw(); // ロード失敗時も再描画
+            };
+
+            // --- メートル値をピクセル値にマッピングするための設定 ---
+            // キャンバス上での視覚的な表示のためのピクセル範囲
+            const LINE_LENGTH_PX_MIN = 80;  // 3mに対応
+
+            const LINE_DISTANCE_PX_MIN = 70; // 4mに対応
+            const LINE_DISTANCE_PX_MAX = 700; // 50mに対応
+
+            // スライダー設定から取得したメートル範囲
+            const LEFT_LINE_LENGTH_M_MIN = parseFloat(leftLineLengthSlider.min);
+            const LEFT_LINE_LENGTH_M_MAX = parseFloat(leftLineLengthSlider.max);
+            const RIGHT_LINE_LENGTH_M_MIN = parseFloat(rightLineLengthSlider.min);
+            const RIGHT_LINE_LENGTH_M_MAX = parseFloat(rightLineLengthSlider.max);
+            const LINE_DISTANCE_M_MIN = parseFloat(lineDistanceSlider.min);
+            const LINE_DISTANCE_M_MAX = parseFloat(lineDistanceSlider.max); 
+
+            // 基点となる物体の概念的な高さ (30cm) のピクセルオフセット
+            // この値が、canvasの地面 (floorY) から基点のy座標までの距離になる
+            const BASE_POINT_HEIGHT_PX_OFFSET = 30; // 30cmを視覚的に表現
+            const TOP_CANVAS_MARGIN = 50; // キャンバス上部から樹木の頂点までの最小マージン
+
+            // 図形の現在の設定 (メートル単位で値を保持)
+            let config = {
+                leftLine: { x: 0, y1: 0, y2: 0, lengthM: parseFloat(leftLineLengthSlider.value) },
+                rightLine: { x: 0, y1: 0, y2: 0, lengthM: parseFloat(rightLineLengthSlider.value) },
+                lineDistanceM: parseFloat(lineDistanceSlider.value),
+                basePoint: { x: 0, y: 0, relativeX: parseFloat(basePointXSlider.value) / 100 }
+            };
+
+            let isDragging = false;
+            // ドラッグ可能なターゲット: 'leftLineTopHandle', 'rightLineTopHandle', 'basePoint', 'rightLine'
+            let dragTarget = null;
+
+            // キャンバス依存のグローバル座標変数 (地面のY座標と左線分の固定X座標)
+            let floorY; // "地面" またはX軸のY座標
+            let leftLineFixedX; // 左線分の固定X座標
+            let LINE_LENGTH_PX_DRAW_MAX_DYNAMIC; // 25mに対応する最大描画ピクセル高 (動的に計算)
+            let LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE; // 線分の高さドラッグ時の有効な最大ピクセル高
+
+            /**
+             * 値を入力範囲から出力範囲へマッピングする関数
+             * @param {number} value マッピングする値
+             * @param {number} in_min 入力範囲の最小値
+             * @param {number} in_max 入力範囲の最大値
+             * @param {number} out_min 出力範囲の最小値
+             * @param {number} out_max 出力範囲の最大値
+             * @returns {number} 出力範囲にマッピングされた値
+             */
+            function map(value, in_min, in_max, out_min, out_max) {
+                value = Math.max(in_min, Math.min(value, in_max)); // 入力範囲内にクランプ
+                return (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+            }
+
+            /**
+             * 現在の設定 (メートル値) に基づいて、線分と基点のピクセル座標を計算します。
+             * これにより、すべての座標がキャンバスに対して相対的になり、制約が維持されます。
+             */
+            function calculatePositions() {
+                // メートル単位の長さ/距離を、描画用のピクセル長さ/距離に変換
+                const leftLineLengthPx = map(config.leftLine.lengthM, LEFT_LINE_LENGTH_M_MIN, LEFT_LINE_LENGTH_M_MAX, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAW_MAX_DYNAMIC);
+                const rightLineLengthPx = map(config.rightLine.lengthM, RIGHT_LINE_LENGTH_M_MIN, RIGHT_LINE_LENGTH_M_MAX, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAW_MAX_DYNAMIC);
+                const lineDistancePx = map(config.lineDistanceM, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX, LINE_DISTANCE_PX_MIN, LINE_DISTANCE_PX_MAX); 
+
+                // 左線分のX座標は固定
+                config.leftLine.x = leftLineFixedX;
+                // 右線分のX座標は、左線分のXと線分間距離で決定
+                config.rightLine.x = config.leftLine.x + lineDistancePx;
+
+                // 左線分はfloorYから上向きに伸びる垂直線
+                config.leftLine.y2 = floorY; // 下端 ("X軸"上)
+                config.leftLine.y1 = floorY - leftLineLengthPx; // 上端
+
+                // 右線分はfloorYから上向きに伸びる垂直線
+                config.rightLine.y2 = floorY; // 下端 ("X軸"上)
+                config.rightLine.y1 = floorY - rightLineLengthPx; // 上端
+
+                // 基点 (robot) のY座標は、floorYからBASE_POINT_HEIGHT_PX_OFFSETだけ上
+                config.basePoint.y = floorY - BASE_POINT_HEIGHT_PX_OFFSET;
+                // 基点 (robot) のX座標は、2つの線分間の水平幅に対してrelativeXの割合で配置
+                const currentHorizontalSpan = config.rightLine.x - config.leftLine.x;
+                config.basePoint.x = config.leftLine.x + currentHorizontalSpan * config.basePoint.relativeX;
+            }
+
+            /**
+             * 3つの点間の角度 (度数) を余弦定理を用いて計算します。
+             * 角度は点Bで計算されます。
+             * @param {number} Ax 点AのX座標
+             * @param {number} Ay 点AのY座標
+             * @param {number} Bx 点BのX座標 (角度の頂点)
+             * @param {number} By 点BのY座標 (角度の頂点)
+             * @param {number} Cx 点CのX座標
+             * @param {number} Cy 点CのY座標
+             * @returns {number} 度数単位での角度
+             */
+            function calculateAngle(Ax, Ay, Bx, By, Cx, Cy) {
+                const BAx = Ax - Bx;
+                const BAy = Ay - By;
+                const BCx = Cx - Bx;
+                const BCy = Cy - By;
+
+                // ドット積 (内積)
+                const dotProduct = (BAx * BCx) + (BAy * BCy);
+
+                // ベクトルの長さ (ノルム)
+                const magnitudeBA = Math.sqrt(BAx * BAx + BAy * BAy);
+                const magnitudeBC = Math.sqrt(BCx * BCx + BCy * BCy);
+
+                if (magnitudeBA === 0 || magnitudeBC === 0) {
+                    return 0; // ベクトルの長さが0の場合は角度を計算できない
+                }
+
+                const cosAngle = dotProduct / (magnitudeBA * magnitudeBC);
+                // 浮動小数点誤差によるNaNや範囲外を防ぐため [-1, 1] にクランプ
+                const clampedCosAngle = Math.max(-1, Math.min(1, cosAngle));
+                const angleRad = Math.acos(clampedCosAngle);
+                return angleRad * (180 / Math.PI); // ラジアンを度数に変換
+            }
+
+            /**
+             * キャンバス上の全要素を描画し、表示されている角度を更新します。
+             */
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height); // キャンバスをクリア
+
+                // 現在の設定とキャンバスサイズに基づいて座標を再計算
+                calculatePositions();
+
+                // X軸 (地面の線) を描画して参照点とする
+                ctx.strokeStyle = '#6B7280'; // Gray-500
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, floorY);
+                ctx.lineTo(canvas.width, floorY);
+                ctx.stroke();
+
+                // 線分 (樹木) を描画
+                // 幹の描画
+                ctx.strokeStyle = '#8B4513'; // 茶色 (幹の色)
+                ctx.lineWidth = 15; // 太い幹
+                ctx.lineCap = 'butt'; // 線端のスタイルをデフォルトに
+
+                // 左線分 (樹木A)
+                ctx.beginPath();
+                ctx.moveTo(config.leftLine.x, config.leftLine.y1); // 上端
+                ctx.lineTo(config.leftLine.x, config.leftLine.y2); // 下端
+                ctx.stroke();
+
+                // 右線分 (樹木B)
+                ctx.beginPath();
+                ctx.moveTo(config.rightLine.x, config.rightLine.y1); // 上端
+                ctx.lineTo(config.rightLine.x, config.rightLine.y2); // 下端
+                ctx.stroke();
+
+                // 葉っぱの描画 (上端にシンプルな円で表現)
+                ctx.fillStyle = '#10B981'; // Tailwind emerald-500
+                const foliageRadius = 25; // 葉っぱの半径
+                ctx.beginPath();
+                ctx.arc(config.leftLine.x, config.leftLine.y1, foliageRadius, 0, Math.PI * 2); // 左樹木の上部
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(config.rightLine.x, config.rightLine.y1, foliageRadius, 0, Math.PI * 2); // 右樹木の上部
+                ctx.fill();
+
+                // ドラッグ用のハンドルを描画 (線分の上端)
+                ctx.fillStyle = '#1D4ED8'; // Tailwind blue-700
+                ctx.beginPath();
+                ctx.arc(config.leftLine.x, config.leftLine.y1, 8, 0, Math.PI * 2); // 左線分上端ハンドル
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(config.rightLine.x, config.rightLine.y1, 8, 0, Math.PI * 2); // 右線分上端ハンドル
+                ctx.fill();
+
+                // 基点 (ロボット画像または代替円) を描画
+                if (basePointImageLoaded) {
+                    // ロボット画像の中心をconfig.basePoint.xに合わせ、上端をconfig.basePoint.yに合わせる
+                    ctx.drawImage(basePointImage,
+                                  config.basePoint.x - basePointImageDrawWidth / 2,
+                                  config.basePoint.y, // ロボット画像の上端が角度計算の点になる
+                                  basePointImageDrawWidth,
+                                  basePointImageDrawHeight);
+                } else {
+                    // 画像のロード失敗時の代替として円を描画
+                    ctx.fillStyle = '#EF4444'; // Tailwind red-500
+                    ctx.beginPath();
+                    ctx.arc(config.basePoint.x, config.basePoint.y, 8, 0, Math.PI * 2); // 半径8の円
+                    ctx.fill();
+                }
+
+                // 基点から線分の上端を結ぶ線を描画 (角度を可視化するため)
+                ctx.strokeStyle = '#6B7280'; // Tailwind gray-500
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]); // 破線
+
+                ctx.beginPath();
+                ctx.moveTo(config.basePoint.x, config.basePoint.y);
+                ctx.lineTo(config.leftLine.x, config.leftLine.y1); // 左線分の上端と基点
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(config.basePoint.x, config.basePoint.y);
+                ctx.lineTo(config.rightLine.x, config.rightLine.y1); // 右線分の上端と基点
+                ctx.stroke();
+                ctx.setLineDash([]); // 破線をリセット
+
+
+                // --- 角度の視覚的表現 (円弧) ---
+                const angleArcRadius = 40; // 円弧の半径
+                const p1_x = config.leftLine.x;
+                const p1_y = config.leftLine.y1;
+                const p2_x = config.basePoint.x;
+                const p2_y = config.basePoint.y;
+                const p3_x = config.rightLine.x;
+                const p3_y = config.rightLine.y1;
+
+                // ベクトルBP1 (基点から左樹木上端) の角度
+                const angle1 = Math.atan2(p1_y - p2_y, p1_x - p2_x);
+                // ベクトルBP3 (基点から右樹木上端) の角度
+                const angle2 = Math.atan2(p3_y - p2_y, p3_x - p2_x);
+
+                // 弧の描画
+                ctx.beginPath();
+                // 角度の色を統一 (今回は #1E40AF と同じ色を使用)
+                const angleColor = '#1E40AF'; // 角度の円弧と数値の色を定義
+                ctx.strokeStyle = angleColor;
+                ctx.lineWidth = 3;
+                ctx.arc(p2_x, p2_y, angleArcRadius, angle1, angle2, angle1 > angle2); // 角度の大小で描画方向を調整
+                ctx.stroke();
+
+                // 角度を計算して表示
+                const angle = calculateAngle(
+                    config.leftLine.x, config.leftLine.y1, // 左線分の上端
+                    config.basePoint.x, config.basePoint.y, // 基点
+                    config.rightLine.x, config.rightLine.y1  // 右線分の上端
+                );
+                angleDisplay.textContent = `${angle.toFixed(2)}°`;
+
+
+                // --- メインUIへの数値データ表示 ---
+                ctx.fillStyle = '#4B5563'; // Gray-700
+                ctx.font = 'bold 16px Inter'; // 少し太めのフォント
+
+                // 左樹木の高さ (線分の左側に表示)
+                ctx.textAlign = 'right'; // 右揃え
+                ctx.fillText(`高さ: ${config.leftLine.lengthM.toFixed(1)}m`, config.leftLine.x - ctx.lineWidth / 2 - 10, config.leftLine.y1 + foliageRadius);
+
+                // 右樹木の高さ (線分の右側に表示)
+                ctx.textAlign = 'left'; // 左揃え
+                ctx.fillText(`高さ: ${config.rightLine.lengthM.toFixed(1)}m`, config.rightLine.x + ctx.lineWidth / 2 + 10, config.rightLine.y1 + foliageRadius);
+
+                // 樹木間の距離 (地面の少し上に表示)
+                ctx.textAlign = 'center';
+                const midXBetweenLines = (config.leftLine.x + config.rightLine.x) / 2;
+                ctx.fillText(`距離: ${config.lineDistanceM.toFixed(1)}m`, midXBetweenLines, floorY + 30);
+
+                // 角度 (中央に大きく表示)
+                ctx.font = 'bold 48px Inter';
+                // 角度の数値を円弧の色と合わせる
+                ctx.fillStyle = angleColor; // angleColorを使用
+                ctx.fillText(`${angle.toFixed(2)}°`, canvas.width / 2, 50); // キャンバス上部中央に表示
+
+                // 基点と線分までの水平距離表示 (X軸方向の距離)
+                ctx.font = 'bold 14px Inter'; // 少し小さめのフォント
+                ctx.fillStyle = '#4B5563'; // Gray-700
+
+                // 補助線とテキスト表示の基準Y座標 (地面の少し上)
+                const horizontalGuideY = floorY - 20;
+
+                // 左樹木と基点のX軸方向距離 (メートル単位で直接計算)
+                const distLeftX_M = config.lineDistanceM * config.basePoint.relativeX;
+                ctx.strokeStyle = '#9CA3AF'; // Gray-400
+                ctx.setLineDash([2, 2]); // 細かい破線
+                // 水平距離線
+                ctx.beginPath();
+                ctx.moveTo(config.leftLine.x, horizontalGuideY);
+                ctx.lineTo(config.basePoint.x, horizontalGuideY);
+                ctx.stroke();
+                // テキスト表示 (左樹木と基点の中間X位置)
+                ctx.textAlign = 'center';
+                ctx.fillText(`${distLeftX_M.toFixed(1)}m`, (config.leftLine.x + config.basePoint.x) / 2, horizontalGuideY - 10);
+
+
+                // 右樹木と基点のX軸方向距離 (メートル単位で直接計算)
+                const distRightX_M = config.lineDistanceM * (1 - config.basePoint.relativeX);
+                // 水平距離線
+                ctx.beginPath();
+                ctx.moveTo(config.basePoint.x, horizontalGuideY);
+                ctx.lineTo(config.rightLine.x, horizontalGuideY);
+                ctx.stroke();
+                // テキスト表示 (右樹木と基点の中間X位置)
+                ctx.textAlign = 'center';
+                ctx.fillText(`${distRightX_M.toFixed(1)}m`, (config.rightLine.x + config.basePoint.x) / 2, horizontalGuideY - 10);
+
+                ctx.setLineDash([]); // 破線をリセット
+            }
+
+            // --- イベントリスナー ---
+            // マウスダウンイベント
+            canvas.addEventListener('mousedown', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                const handleRadius = 15; // ドラッグしやすいように半径を大きめに設定
+
+                // 左線分の上端ハンドル (高さ調整用)
+                if (Math.hypot(mouseX - config.leftLine.x, mouseY - config.leftLine.y1) < handleRadius) {
+                    isDragging = true;
+                    dragTarget = 'leftLineTopHandle';
+                }
+                // 右線分の上端ハンドル (高さ調整用)
+                else if (Math.hypot(mouseX - config.rightLine.x, mouseY - config.rightLine.y1) < handleRadius) {
+                    isDragging = true;
+                    dragTarget = 'rightLineTopHandle';
+                }
+                // 基点 (水平位置調整用) - 画像の範囲で判定
+                else if (mouseX > config.basePoint.x - basePointImageDrawWidth / 2 - handleRadius &&
+                         mouseX < config.basePoint.x + basePointImageDrawWidth / 2 + handleRadius &&
+                         mouseY > config.basePoint.y - handleRadius &&
+                         mouseY < config.basePoint.y + basePointImageDrawHeight + handleRadius) {
+                    isDragging = true;
+                    dragTarget = 'basePoint';
+                }
+                // 右線分本体 (水平移動で線分間距離調整用)
+                // 左線分はX軸固定のため、右線分のみ水平ドラッグ可能
+                else if (mouseX > config.rightLine.x - (ctx.lineWidth / 2 + handleRadius) && mouseX < config.rightLine.x + (ctx.lineWidth / 2 + handleRadius) &&
+                         mouseY > config.rightLine.y1 && mouseY < config.rightLine.y2) {
+                    isDragging = true;
+                    dragTarget = 'rightLine';
+                }
+            });
+
+            // マウスムーブイベント
+            canvas.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                switch (dragTarget) {
+                    case 'leftLineTopHandle':
+                        // 左線分の長さを調整 (y1が変化、y2はfloorYに固定)
+                        // マウスのY座標 (ピクセル) をfloorYからの相対ピクセル長さに変換
+                        const newLeftLengthPx = floorY - mouseY;
+                        // ピクセル長さをメートル範囲にマッピング
+                        config.leftLine.lengthM = map(newLeftLengthPx, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE, LEFT_LINE_LENGTH_M_MIN, LEFT_LINE_LENGTH_M_MAX);
+                        leftLineLengthSlider.value = config.leftLine.lengthM.toFixed(1); // スライダーを更新
+                        leftLineLengthValue.textContent = `${config.leftLine.lengthM.toFixed(1)}m`;
+                        break;
+                    case 'rightLineTopHandle':
+                        // 右線分の長さを調整
+                        const newRightLengthPx = floorY - mouseY;
+                        config.rightLine.lengthM = map(newRightLengthPx, LINE_LENGTH_PX_MIN, LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE, RIGHT_LINE_LENGTH_M_MIN, RIGHT_LINE_LENGTH_M_MAX);
+                        rightLineLengthSlider.value = config.rightLine.lengthM.toFixed(1);
+                        rightLineLengthValue.textContent = `${config.rightLine.lengthM.toFixed(1)}m`;
+                        break;
+                    case 'basePoint':
+                        // 基点のX位置を調整 (Yは floorY - BASE_POINT_HEIGHT_PX_OFFSET に固定)
+                        const currentHorizontalSpanPx = config.rightLine.x - config.leftLine.x;
+                        // マウスのX座標から左線分のX座標を引いたものを、現在の水平幅で割る
+                        let newRelativeX = (mouseX - config.leftLine.x) / currentHorizontalSpanPx;
+                        // relativeXを0から1の範囲にクランプ
+                        config.basePoint.relativeX = Math.max(0, Math.min(1, newRelativeX));
+                        basePointXSlider.value = (config.basePoint.relativeX * 100).toFixed(0);
+                        basePointXValue.textContent = `中央 (${(config.basePoint.relativeX * 100).toFixed(0)}%)`;
+                        break;
+                    case 'rightLine':
+                        // 右線分を水平に移動して線分間距離を変更
+                        const newRightLineX = mouseX;
+                        // newRightLineX (ピクセル) を固定されたleftLineFixedXからのピクセル距離に変換
+                        const newDistancePx = newRightLineX - leftLineFixedX;
+                        // ピクセル距離をメートル範囲にマッピング
+                        config.lineDistanceM = map(newDistancePx, LINE_DISTANCE_PX_MIN, LINE_DISTANCE_PX_MAX, LINE_DISTANCE_M_MIN, LINE_DISTANCE_M_MAX);
+                        lineDistanceSlider.value = config.lineDistanceM.toFixed(1);
+                        lineDistanceValue.textContent = `${config.lineDistanceM.toFixed(1)}m`;
+                        break;
+                }
+                draw(); // 変更を反映するためにキャンバスを再描画
+            });
+
+            // マウスアップイベント
+            canvas.addEventListener('mouseup', () => {
+                isDragging = false;
+                dragTarget = null;
+            });
+
+            // スライダーの値が変更されたときのイベントリスナー
+            leftLineLengthSlider.addEventListener('input', (e) => {
+                config.leftLine.lengthM = parseFloat(e.target.value);
+                leftLineLengthValue.textContent = `${config.leftLine.lengthM.toFixed(1)}m`;
+                draw();
+            });
+
+            rightLineLengthSlider.addEventListener('input', (e) => {
+                config.rightLine.lengthM = parseFloat(e.target.value);
+                rightLineLengthValue.textContent = `${config.rightLine.lengthM.toFixed(1)}m`;
+                draw();
+            });
+
+            lineDistanceSlider.addEventListener('input', (e) => {
+                config.lineDistanceM = parseFloat(e.target.value);
+                lineDistanceValue.textContent = `${config.lineDistanceM.toFixed(1)}m`;
+                draw();
+            });
+
+            basePointXSlider.addEventListener('input', (e) => {
+                config.basePoint.relativeX = parseFloat(e.target.value) / 100;
+                basePointXValue.textContent = `中央 (${(config.basePoint.relativeX * 100).toFixed(0)}%)`;
+                draw();
+            });
+
+            // キャンバスのリサイズを処理する関数
+            function resizeCanvas() {
+                // 親要素の幅に合わせてキャンバスの幅を調整し、アスペクト比を維持
+                const parentWidth = canvas.parentElement.clientWidth;
+                canvas.width = parentWidth;
+                canvas.height = parentWidth / 2; // 例: 2:1のアスペクト比
+
+                // キャンバス依存の座標システム変数を更新
+                floorY = canvas.height - 70; // 下から70pxを"地面"とする (基点画像とテキスト表示のため余裕を持たせる)
+                // 左線分の固定X座標を調整。キャンバスの幅に応じて、左端からのパーセンテージで指定
+                // 例えば、キャンバス幅の15%を左余白にする (以前の10%から増加)
+                leftLineFixedX = canvas.width * 0.15; 
+                
+                // 線分の高さドラッグ時の有効な最大ピクセル高を更新
+                // キャンバスの高さから、上部のマージンと地面までのパディングを引いたものが、樹木の描画可能な最大ピクセル高
+                LINE_LENGTH_PX_DRAW_MAX_DYNAMIC = floorY - TOP_CANVAS_MARGIN;
+                LINE_LENGTH_PX_DRAG_MAX_EFFECTIVE = LINE_LENGTH_PX_DRAW_MAX_DYNAMIC; // ドラッグも同じ最大値を使用
+
+                draw(); // 新しい寸法で再描画
+            }
+
+            // 初期描画とリサイズリスナーの設定
+            resizeCanvas(); // ロード時の初回描画
+            window.addEventListener('resize', resizeCanvas); // ウィンドウリサイズ時に再描画
+
+            // スライダーの初期表示値をメートルに更新
+            leftLineLengthValue.textContent = `${parseFloat(leftLineLengthSlider.value).toFixed(1)}m`;
+            rightLineLengthValue.textContent = `${parseFloat(rightLineLengthSlider.value).toFixed(1)}m`;
+            lineDistanceValue.textContent = `${parseFloat(lineDistanceSlider.value).toFixed(1)}m`;
+        });
+    </script>
+</body>
+</html>
